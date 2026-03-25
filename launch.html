@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SMART on FHIR Launching...</title>
+    <script src="https://cdn.jsdelivr.net/npm/fhirclient/build/fhir-client.js"></script>
+</head>
+<body>
+    <div style="font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background-color: #f8fafc;">
+        <div class="loader"></div>
+        <p style="margin-top: 24px; color: #475569; font-size: 16px; font-weight: 500;">正在連接 FHIR 醫療資料庫並進行安全性驗證...</p>
+        <p style="margin-top: 8px; color: #94a3b8; font-size: 12px;">Client ID: cc344727-6f90-496c-94fd-c7829aa9a51d</p>
+    </div>
+
+    <script>
+        /**
+         * SMART on FHIR 啟動邏輯
+         * 此頁面負責與 FHIR Server 的 Authorization Endpoint 進行握手
+         */
+        FHIR.oauth2.authorize({
+            // 第二階段測試專用 Client ID
+            "clientId": "cc344727-6f90-496c-94fd-c7829aa9a51d", 
+            
+            // 要求的權限範圍 (Scope)
+            // 包含病患資料讀取、使用者身份確認及聯機權限
+            "scope": "patient/*.read user/Patient.read openid fhirUser profile",
+            
+            // 授權成功後的跳轉頁面 (您的主程式 index.html)
+            "redirectUri": "index.html",
+            
+            // 從 URL 參數中自動取得 FHIR Server 的 Base URL (iss)
+            "iss": new URLSearchParams(window.location.search).get("iss")
+        });
+    </script>
+
+    <style>
+        .loader {
+            border: 4px solid #e2e8f0;
+            border-top: 4px solid #4f46e5;
+            border-radius: 50%;
+            width: 48px;
+            height: 48px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</body>
+</html>
