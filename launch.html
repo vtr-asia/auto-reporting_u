@@ -2,51 +2,33 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SMART on FHIR Launching...</title>
-    <script src="https://cdn.jsdelivr.net/npm/fhirclient/build/fhir-client.js"></script>
+    <title>慢性病連續處方箋自動申報 - Launch</title>
+    <script src="https://cdn.jsdelivr.net/npm/fhirclient@2/dist/fhir-client.js"></script>
+    <style>
+        body { font-family: "Microsoft JhengHei", Arial, sans-serif; text-align: center; padding: 50px; }
+        .loading { font-size: 18px; color: #0066cc; }
+    </style>
 </head>
 <body>
-    <div style="font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background-color: #f8fafc;">
-        <div class="loader"></div>
-        <p style="margin-top: 24px; color: #475569; font-size: 16px; font-weight: 500;">正在連接 FHIR 醫療資料庫並進行安全性驗證...</p>
-        <p style="margin-top: 8px; color: #94a3b8; font-size: 12px;">Client ID: cc344727-6f90-496c-94fd-c7829aa9a51d</p>
-    </div>
+    <h1>心血管慢性病連續處方箋自動申報</h1>
+    <p class="loading">正在進行 OAuth 授權，請稍候...</p>
 
     <script>
-        /**
-         * SMART on FHIR 啟動邏輯
-         * 此頁面負責與 FHIR Server 的 Authorization Endpoint 進行握手
-         */
+        // 您的 confidential client 資訊（建議實際上線時移到後端 proxy，避免前端暴露 secret）
+        const clientId = "cc344727-6f90-496c-94fd-c7829aa9a51d";
+        const clientSecret = "79f04b56b33491716c0880af72cdef7d3f0629111421cedd18353651cd313d9e";
+
+        // SMART on FHIR 授權流程
         FHIR.oauth2.authorize({
-            // 第二階段測試專用 Client ID
-            "clientId": "cc344727-6f90-496c-94fd-c7829aa9a51d", 
-            
-            // 要求的權限範圍 (Scope)
-            // 包含病患資料讀取、使用者身份確認及聯機權限
-            "scope": "patient/*.read user/Patient.read openid fhirUser profile",
-            
-            // 授權成功後的跳轉頁面 (您的主程式 index.html)
-            "redirectUri": "index.html",
-            
-            // 從 URL 參數中自動取得 FHIR Server 的 Base URL (iss)
-            "iss": new URLSearchParams(window.location.search).get("iss")
+            client_id: clientId,
+            client_secret: clientSecret,   // confidential client 使用
+            scope: "launch/patient patient/Patient.read patient/Condition.read patient/Observation.read patient/MedicationRequest.read openid fhirUser",
+            redirect_uri: window.location.origin + "/index.html",   // 重要：改成您實際的 index.html 完整路徑
+            aud: new URLSearchParams(window.location.search).get("iss") || undefined
+        }).catch(err => {
+            console.error("授權失敗", err);
+            document.body.innerHTML = `<p style="color:red;">授權失敗：${err.message}</p>`;
         });
     </script>
-
-    <style>
-        .loader {
-            border: 4px solid #e2e8f0;
-            border-top: 4px solid #4f46e5;
-            border-radius: 50%;
-            width: 48px;
-            height: 48px;
-            animation: spin 1s linear infinite;
-        }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-    </style>
 </body>
 </html>
