@@ -55,6 +55,7 @@
 
     <main class="max-w-7xl mx-auto grid grid-cols-12 gap-6">
         
+        <!-- 左側：診間即時檢核 -->
         <section class="col-span-12 lg:col-span-5 space-y-6">
             <div class="bg-white rounded-3xl p-8 shadow-xl border border-slate-100 relative">
                 <div class="flex items-center justify-between mb-8">
@@ -104,20 +105,31 @@
             </div>
         </section>
 
+        <!-- 右側：用藥紀錄（已替換） -->
         <section class="col-span-12 lg:col-span-7 space-y-6">
             <div class="bg-white rounded-3xl p-8 shadow-sm border border-slate-100">
                 <div class="flex justify-between items-center mb-8">
                     <div>
-                        <h3 class="text-lg font-bold text-slate-800 italic">Blood Pressure Trends</h3>
-                        <p class="text-xs text-slate-400 font-medium">LOINC: 85354-9 (Systolic/Diastolic)</p>
+                        <h3 class="text-lg font-bold text-slate-800 italic">用藥紀錄</h3>
+                        <p class="text-xs text-slate-400 font-medium">MedicationStatement / MedicationRequest</p>
                     </div>
-                    <div class="bg-indigo-50 px-3 py-1 rounded-full"><span class="text-[10px] font-bold text-indigo-600 underline">FHIR Observation Dataset</span></div>
+                    <div class="bg-emerald-50 px-3 py-1 rounded-full">
+                        <span class="text-[10px] font-bold text-emerald-600 underline">FHIR Medication Data</span>
+                    </div>
                 </div>
-                <div class="h-[300px]">
-                    <canvas id="bpChart"></canvas>
+                
+                <!-- 用藥趨勢圖 -->
+                <div class="h-[260px] mb-8">
+                    <canvas id="medicationChart"></canvas>
+                </div>
+
+                <!-- 用藥清單 -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4" id="medication-list">
+                    <!-- 由 JavaScript 動態產生 -->
                 </div>
             </div>
 
+            <!-- 右下兩格卡片保持不變 -->
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div class="bg-slate-900 rounded-3xl p-6 shadow-xl relative overflow-hidden">
                     <i data-lucide="shield-check" class="absolute -right-4 -bottom-4 w-32 h-32 text-slate-800 opacity-30"></i>
@@ -125,7 +137,7 @@
                     <div class="relative z-10">
                         <h4 class="text-5xl font-black text-white italic">94<span class="text-2xl text-indigo-400">%</span></h4>
                         <p class="text-green-400 text-[10px] font-bold mt-2 flex items-center">
-                            <i data-lucide="check-circle" class="w-3 h-3 mr-1"></i> 低核減風險項目 (依據臨床證據)
+                            <i data-lucide="check-circle" class="w-3 h-3 mr-1"></i> 低核減風險項目
                         </p>
                     </div>
                 </div>
@@ -154,89 +166,56 @@
     </div>
 
     <script>
-        // 初始化 Lucide 圖示
         lucide.createIcons();
 
-        // ==================== 主程式 ====================
+        let currentPatientId = null;
+
         async function initApp() {
             try {
-                // 關鍵：使用 FHIR.oauth2.ready() 取得已授權的 client
                 const client = await FHIR.oauth2.ready();
-                console.log("✅ SMART on FHIR 授權成功", client);
+                console.log("✅ SMART on FHIR 授權成功");
 
-                // 1. 取得病人基本資料
                 const patient = await client.request(`Patient/${client.patient.id}`);
+                currentPatientId = client.patient.id;
 
-                // 2. 取得最近的血壓 Observation (LOINC 85354-9)
+                // 取得血壓（左上角仍保留顯示最新收縮壓）
                 const bpBundle = await client.request({
                     url: "Observation",
-                    params: {
-                        patient: client.patient.id,
-                        code: "85354-9",           // Blood pressure panel
-                        _sort: "-date",
-                        _count: 12
-                    }
+                    params: { patient: client.patient.id, code: "85354-9", _sort: "-date", _count: 5 }
                 });
 
-                // 解析最新血壓
                 let latestSBP = 135;
-                let latestDBP = 82;
-                let bpHistory = [135, 142, 138, 145, 150, 148]; // 預設趨勢
-
                 if (bpBundle.entry && bpBundle.entry.length > 0) {
-                    const obsList = bpBundle.entry.map(e => e.resource);
-                    
-                    // 取最新一筆
-                    const latestObs = obsList[0];
-                    if (latestObs.component) {
-                        latestSBP = latestObs.component.find(c => 
-                            c.code.coding?.[0]?.code === "8480-6"
-                        )?.valueQuantity?.value || 135;
-
-                        latestDBP = latestObs.component.find(c => 
-                            c.code.coding?.[0]?.code === "8462-4"
-                        )?.valueQuantity?.value || 82;
-                    }
-
-                    // 建立趨勢資料（最多6筆）
-                    bpHistory = obsList.slice(0, 6).map(obs => {
-                        const sbpComp = obs.component?.find(c => c.code.coding?.[0]?.code === "8480-6");
-                        return sbpComp?.valueQuantity?.value || 135;
-                    }).reverse();
+                    const latestObs = bpBundle.entry[0].resource;
+                    const sbpComp = latestObs.component?.find(c => c.code.coding?.[0]?.code === "8480-6");
+                    latestSBP = sbpComp?.valueQuantity?.value || 135;
                 }
 
-                // 更新 UI
+                // 更新病人基本資訊
                 updateUIWithData({
-                    name: patient.name?.[0]?.text || 
-                          `${patient.name?.[0]?.family || ''} ${patient.name?.[0]?.given?.join(' ') || ''}`,
+                    name: patient.name?.[0]?.text || `${patient.name?.[0]?.family || ''} ${patient.name?.[0]?.given?.join(' ') || ''}`,
                     id: patient.id,
-                    age: patient.birthDate ? 
-                         (new Date().getFullYear() - new Date(patient.birthDate).getFullYear()) : 58,
+                    age: patient.birthDate ? (new Date().getFullYear() - new Date(patient.birthDate).getFullYear()) : 58,
                     gender: patient.gender === "male" ? "男" : (patient.gender === "female" ? "女" : "未知"),
                     sbp: Math.round(latestSBP),
-                    dbp: Math.round(latestDBP),
                     diagnosis: "I10 原發性高血壓"
                 });
 
-                // 渲染血壓趨勢圖
-                renderBPChart(bpHistory);
-
-                console.log("📊 病人資料載入完成", { patient, bpBundle });
+                // 載入用藥紀錄
+                await loadMedicationRecords(client);
 
             } catch (error) {
-                console.error("❌ SMART Launch 失敗，切換至 Demo 模式", error);
-                
-                // Demo 模式（直接開啟 index.html 或授權失敗時使用）
+                console.error("❌ 授權失敗，進入 Demo 模式", error);
+                // Demo 模式
                 updateUIWithData({
                     name: "王大同 (Wang, Da-Tong)",
                     id: "A123456789",
                     age: 58,
                     gender: "男",
                     sbp: 135,
-                    dbp: 82,
                     diagnosis: "I10 原發性高血壓"
                 });
-                renderBPChart([155, 148, 150, 142, 138, 135]);
+                loadDemoMedication();
             }
         }
 
@@ -248,29 +227,86 @@
             document.getElementById('check-bp-text').innerText = `最近 SBP 為 ${data.sbp} mmHg，符合維持性治療給付規範。`;
         }
 
-        // 渲染血壓趨勢圖（支援動態資料）
-        function renderBPChart(historyData) {
-            const ctx = document.getElementById('bpChart').getContext('2d');
-            
-            // 清除舊圖表（避免重複建立）
-            if (window.bpChartInstance) {
-                window.bpChartInstance.destroy();
-            }
+        // ====================== 用藥紀錄功能 ======================
+        async function loadMedicationRecords(client) {
+            try {
+                const medBundle = await client.request({
+                    url: "MedicationStatement",
+                    params: {
+                        patient: client.patient.id,
+                        _sort: "-effectiveDateTime",
+                        _count: 10
+                    }
+                });
 
-            window.bpChartInstance = new Chart(ctx, {
-                type: 'line',
+                const medications = medBundle.entry ? medBundle.entry.map(e => e.resource) : [];
+                renderMedicationList(medications);
+                renderMedicationChart(medications);
+
+            } catch (e) {
+                console.warn("無法從 FHIR 取得用藥資料，使用 Demo 資料");
+                loadDemoMedication();
+            }
+        }
+
+        function loadDemoMedication() {
+            const demoMeds = [
+                { medication: "Valsartan 80mg", status: "active", frequency: "每日一次", start: "2025-10-01", dose: "80 mg" },
+                { medication: "Amlodipine 5mg", status: "active", frequency: "每日一次", start: "2025-09-15", dose: "5 mg" },
+                { medication: "Metformin 500mg", status: "active", frequency: "每日兩次", start: "2025-08-20", dose: "500 mg" }
+            ];
+            renderMedicationList(demoMeds);
+            renderMedicationChart(demoMeds);
+        }
+
+        function renderMedicationList(meds) {
+            const container = document.getElementById('medication-list');
+            container.innerHTML = '';
+
+            meds.forEach(med => {
+                const name = typeof med.medicationCodeableConcept !== 'undefined' 
+                    ? med.medicationCodeableConcept.text || med.medicationReference?.display 
+                    : med.medication || "未知藥品";
+
+                const html = `
+                    <div class="bg-slate-50 border border-slate-200 rounded-2xl p-5">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <p class="font-semibold text-slate-800">${name}</p>
+                                <p class="text-xs text-slate-500 mt-1">${med.dose || '劑量未明'}</p>
+                            </div>
+                            <span class="px-3 py-1 text-[10px] font-bold rounded-full ${med.status === 'active' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600'}">
+                                ${med.status === 'active' ? '使用中' : '已停用'}
+                            </span>
+                        </div>
+                        <div class="mt-4 text-xs text-slate-500">
+                            ${med.frequency || '每日一次'} • 開始於 ${med.start || '2025 年'}
+                        </div>
+                    </div>
+                `;
+                container.innerHTML += html;
+            });
+        }
+
+        function renderMedicationChart(meds) {
+            const ctx = document.getElementById('medicationChart').getContext('2d');
+            
+            if (window.medChartInstance) window.medChartInstance.destroy();
+
+            const labels = ['10月', '11月', '12月', '1月', '2月', '3月'];
+            const data = [80, 80, 80, 160, 80, 80]; // 模擬 Valsartan 劑量變化
+
+            window.medChartInstance = new Chart(ctx, {
+                type: 'bar',
                 data: {
-                    labels: ['6個月前', '5個月前', '4個月前', '3個月前', '2個月前', '最近'],
+                    labels: labels,
                     datasets: [{
-                        label: '收縮壓 (SBP)',
-                        data: historyData,
-                        borderColor: '#4f46e5',
-                        backgroundColor: 'rgba(79, 70, 229, 0.08)',
-                        borderWidth: 3,
-                        pointBackgroundColor: '#fff',
-                        pointBorderColor: '#4f46e5',
-                        pointRadius: 5,
-                        tension: 0.4
+                        label: '每日劑量 (mg)',
+                        data: data,
+                        backgroundColor: '#10b981',
+                        borderColor: '#059669',
+                        borderWidth: 2,
+                        borderRadius: 6
                     }]
                 },
                 options: {
@@ -278,17 +314,14 @@
                     maintainAspectRatio: false,
                     plugins: { legend: { display: false } },
                     scales: {
-                        y: { min: 100, max: 180, grid: { color: '#e2e8f0' } }
+                        y: { beginAtZero: true, title: { display: true, text: '劑量 (mg)' } }
                     }
                 }
             });
         }
 
-        // 生成 Claim 資源
         function generateClaim() {
             const btn = document.getElementById('claim-btn');
-            const originalText = btn.innerHTML;
-            
             btn.innerHTML = '<i data-lucide="loader" class="animate-spin mr-2"></i> 資源封裝中...';
             lucide.createIcons();
 
@@ -297,35 +330,17 @@
                 id: "smart-claim-" + Date.now().toString().slice(-6),
                 status: "active",
                 use: "claim",
-                patient: { 
-                    reference: `Patient/${document.getElementById('pt-details').innerText.split('ID: ')[1]?.split(' ')[0] || 'unknown'}`,
-                    display: document.getElementById('pt-name').innerText 
-                },
+                patient: { reference: `Patient/${currentPatientId || 'A123456789'}`, display: document.getElementById('pt-name').innerText },
                 created: new Date().toISOString(),
-                diagnosis: [{
-                    sequence: 1,
-                    diagnosisCodeableConcept: {
-                        coding: [{ 
-                            system: "http://hl7.org/fhir/sid/icd-10-cm", 
-                            code: "I10", 
-                            display: "Essential (primary) hypertension" 
-                        }]
-                    }
-                }],
+                diagnosis: [{ sequence: 1, diagnosisCodeableConcept: { coding: [{ system: "http://hl7.org/fhir/sid/icd-10-cm", code: "I10" }] } }],
                 supportingInfo: [{
                     sequence: 1,
-                    category: { text: "Blood Pressure Evidence" },
-                    valueString: `Recent SBP: ${document.getElementById('header-sbp').innerText} mmHg. Complies with hypertension maintenance guideline.`
+                    category: { text: "Medication Evidence" },
+                    valueString: "Patient is on stable Valsartan 80mg therapy."
                 }],
                 item: [{
                     sequence: 1,
-                    productOrService: {
-                        coding: [{ 
-                            system: "http://nhi.gov.tw", 
-                            code: "B024345100", 
-                            display: "Valsartan 80mg" 
-                        }]
-                    },
+                    productOrService: { coding: [{ system: "http://nhi.gov.tw", code: "B024345100", display: "Valsartan 80mg" }] },
                     net: { value: 1250, currency: "TWD" }
                 }]
             };
@@ -333,19 +348,17 @@
             setTimeout(() => {
                 document.getElementById('json-content').innerText = JSON.stringify(claimJSON, null, 2);
                 toggleJsonView();
-                
                 btn.innerHTML = '<i data-lucide="check-circle" class="mr-2"></i> 申報資源已生成 ✓';
-                btn.classList.remove('bg-indigo-600', 'hover:bg-indigo-700');
+                btn.classList.remove('bg-indigo-600');
                 btn.classList.add('bg-green-600');
                 lucide.createIcons();
-            }, 1200);
+            }, 1000);
         }
 
         function toggleJsonView() {
             document.getElementById('json-modal').classList.toggle('hidden');
         }
 
-        // 頁面載入時執行
         window.onload = initApp;
     </script>
 </body>
