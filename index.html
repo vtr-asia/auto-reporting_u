@@ -2,81 +2,53 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>慢性病連續處方箋自動申報</title>
-    <script src="https://cdn.jsdelivr.net/npm/fhirclient@2/dist/fhir-client.js"></script>
-    <style>
-        body { font-family: "Microsoft JhengHei", Arial, sans-serif; margin: 20px; line-height: 1.6; }
-        .info { background: #f0f8ff; padding: 15px; border-radius: 8px; margin: 15px 0; }
-        .data { white-space: pre-wrap; background: #f8f8f8; padding: 10px; border: 1px solid #ddd; }
-    </style>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SMART on FHIR Launching...</title>
+    <script src="https://cdn.jsdelivr.net/npm/fhirclient/build/fhir-client.js"></script>
 </head>
 <body>
-    <h1>心血管慢性病連續處方箋自動申報小助手</h1>
-    
-    <div id="patientInfo" class="info"></div>
-    <div id="medsInfo" class="info"></div>
-    <div id="conditionsInfo" class="info"></div>
-    <div id="obsInfo" class="info"></div>
+    <div style="font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background-color: #f8fafc;">
+        <div class="loader"></div>
+        <p style="margin-top: 24px; color: #475569; font-size: 16px; font-weight: 500;">正在連接 FHIR 醫療資料庫並進行安全性驗證...</p>
+        <p style="margin-top: 8px; color: #94a3b8; font-size: 12px;">Client ID: cc344727-6f90-496c-94fd-c7829aa9a51d</p>
+    </div>
 
     <script>
-        // 授權成功後執行
-        FHIR.oauth2.ready().then(async (client) => {
-            try {
-                // 1. 抓取病人基本資料（名字 + ID）
-                const patient = await client.patient.read();
-                const name = patient.name && patient.name[0] 
-                    ? (patient.name[0].text || 
-                       `${patient.name[0].family || ''} ${ (patient.name[0].given || []).join(' ') }`.trim())
-                    : "未知姓名";
-                
-                const patientId = patient.id;
-
-                document.getElementById("patientInfo").innerHTML = `
-                    <strong>病人姓名：</strong> ${name}<br>
-                    <strong>病人 ID：</strong> ${patientId}<br>
-                    <strong>性別：</strong> ${patient.gender || '未知'}<br>
-                    <strong>出生日期：</strong> ${patient.birthDate || '未知'}
-                `;
-
-                // 2. 抓取 APP 主題相關資料（心血管慢性處方）
-                console.log("正在抓取病人相關資料...");
-
-                // 慢性病況（Condition）
-                const conditions = await client.request(`Condition?patient=${patientId}&category=problem-list-item&_count=50`);
-                document.getElementById("conditionsInfo").innerHTML = `
-                    <strong>慢性病況（Condition）：</strong><br>
-                    <div class="data">${JSON.stringify(conditions, null, 2)}</div>
-                `;
-
-                // 活躍處方（MedicationRequest） - 心血管相關可再加 filter
-                const meds = await client.request(`MedicationRequest?patient=${patientId}&status=active&_count=50`);
-                document.getElementById("medsInfo").innerHTML = `
-                    <strong>活躍處方（MedicationRequest）：</strong><br>
-                    <div class="data">${JSON.stringify(meds, null, 2)}</div>
-                `;
-
-                // 觀察值（Observation） - 血壓、血脂、心率等
-                const obs = await client.request(`Observation?patient=${patientId}&category=vital-signs, laboratory&_count=50`);
-                document.getElementById("obsInfo").innerHTML = `
-                    <strong>觀察值（Observation）：</strong><br>
-                    <div class="data">${JSON.stringify(obs, null, 2)}</div>
-                `;
-
-                // 後續可在此處加入：
-                // - CQL 檢核邏輯
-                // - 產生 Claim 資源進行自動申報
-                // - UI 顯示適合的連續處方建議
-
-                console.log("資料抓取完成！");
-
-            } catch (err) {
-                console.error("資料抓取失敗", err);
-                document.body.innerHTML += `<p style="color:red;">資料抓取失敗：${err.message}</p>`;
-            }
-        }).catch(err => {
-            console.error("SMART ready 失敗", err);
-            document.body.innerHTML = `<p style="color:red;">授權或初始化失敗：${err.message}</p>`;
+        /**
+         * SMART on FHIR 啟動邏輯
+         * 此頁面負責與 FHIR Server 的 Authorization Endpoint 進行握手
+         */
+        FHIR.oauth2.authorize({
+            // 客戶端 ID (Client ID)
+            "clientId": "cc344727-6f90-496c-94fd-c7829aa9a51d", 
+            
+            // 要求的權限範圍 (Scope)
+            // 1. 加入 launch/patient 權限，在 Standalone 啟動時會觸發 Sandbox 的「病人選擇器」
+            // 2. 確保擁有 Patient, Observation (血壓) 與 Condition (診斷) 的讀取權限
+            "scope": "launch/patient patient/Patient.read patient/Observation.read patient/Condition.read openid fhirUser profile",
+            
+            // 授權成功後的跳轉頁面 (導回您的主程式 index.html)
+            "redirectUri": "index.html",
+            
+            // 從 URL 參數中自動取得 FHIR Server 的 Base URL (iss)
+            // 若直接開啟此網頁無參數，則預設連接至 SMART Health IT Sandbox R4 測試伺服器
+            "iss": new URLSearchParams(window.location.search).get("iss") || "https://launch.smarthealthit.org/v/r4/fhir"
         });
     </script>
+
+    <style>
+        .loader {
+            border: 4px solid #e2e8f0;
+            border-top: 4px solid #4f46e5;
+            border-radius: 50%;
+            width: 48px;
+            height: 48px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
 </body>
 </html>
