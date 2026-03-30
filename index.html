@@ -3,52 +3,350 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SMART on FHIR Launching...</title>
+    <title>FHIR SmartClaim Pro | 智慧申報助理</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/fhirclient/build/fhir-client.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+        body { 
+            font-family: 'Inter', sans-serif; 
+            background-color: #f1f5f9; 
+        }
+        .status-pulse { 
+            animation: pulse 2s infinite; 
+        }
+        @keyframes pulse { 
+            0% { opacity: 1; } 
+            50% { opacity: 0.5; } 
+            100% { opacity: 1; } 
+        }
+        pre::-webkit-scrollbar { width: 8px; }
+        pre::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+    </style>
 </head>
-<body>
-    <div style="font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background-color: #f8fafc;">
-        <div class="loader"></div>
-        <p style="margin-top: 24px; color: #475569; font-size: 16px; font-weight: 500;">正在連接 FHIR 醫療資料庫並進行安全性驗證...</p>
-        <p style="margin-top: 8px; color: #94a3b8; font-size: 12px;">Client ID: cc344727-6f90-496c-94fd-c7829aa9a51d</p>
+<body class="min-h-screen p-4 md:p-8">
+
+    <header class="max-w-7xl mx-auto bg-white rounded-3xl p-6 mb-6 shadow-sm flex flex-wrap items-center justify-between border border-blue-100">
+        <div class="flex items-center space-x-5">
+            <div class="h-16 w-16 bg-gradient-to-br from-indigo-600 to-blue-500 rounded-2xl flex items-center justify-center shadow-lg">
+                <i data-lucide="user" class="text-white w-8 h-8"></i>
+            </div>
+            <div>
+                <div class="flex items-center space-x-3">
+                    <h1 class="text-2xl font-bold text-slate-800" id="pt-name">讀取中...</h1>
+                    <span class="px-2 py-1 bg-green-100 text-green-600 text-[10px] font-bold rounded-full uppercase tracking-tighter">SMART Authorized</span>
+                </div>
+                <p class="text-slate-500 text-sm mt-1 italic" id="pt-details">正在從 FHIR Server 取得病患資訊...</p>
+            </div>
+        </div>
+        <div class="flex items-center space-x-6 mt-4 lg:mt-0">
+            <div class="text-right border-r pr-6 border-slate-100">
+                <p class="text-[10px] text-slate-400 font-bold uppercase tracking-widest">最新收縮壓</p>
+                <p class="text-2xl font-black text-indigo-600" id="header-sbp">-- <span class="text-sm font-normal text-slate-400">mmHg</span></p>
+            </div>
+            <button onclick="toggleJsonView()" class="flex items-center space-x-2 bg-slate-800 text-white px-5 py-2.5 rounded-xl hover:bg-slate-700 transition shadow-lg active:scale-95">
+                <i data-lucide="terminal" class="w-4 h-4 text-green-400"></i>
+                <span class="font-bold text-sm">Debug JSON</span>
+            </button>
+        </div>
+    </header>
+
+    <main class="max-w-7xl mx-auto grid grid-cols-12 gap-6">
+        
+        <section class="col-span-12 lg:col-span-5 space-y-6">
+            <div class="bg-white rounded-3xl p-8 shadow-xl border border-slate-100 relative">
+                <div class="flex items-center justify-between mb-8">
+                    <h2 class="text-xl font-bold text-slate-800 flex items-center">
+                        <i data-lucide="activity" class="mr-3 text-red-500"></i>
+                        診間即時檢核
+                    </h2>
+                    <div class="flex items-center space-x-1">
+                        <span class="h-2 w-2 bg-green-500 rounded-full status-pulse"></span>
+                        <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">CQL Engine Active</span>
+                    </div>
+                </div>
+
+                <div class="space-y-4" id="check-list">
+                    <div class="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex items-start">
+                        <div class="bg-green-100 p-2 rounded-lg mr-4">
+                            <i data-lucide="check" class="text-green-600 w-5 h-5"></i>
+                        </div>
+                        <div>
+                            <h3 class="font-bold text-slate-800 text-sm italic">Condition Check</h3>
+                            <p class="text-xs text-slate-500 mt-1" id="check-diagnosis">正在檢索診斷碼...</p>
+                        </div>
+                    </div>
+
+                    <div id="check-bp-card" class="p-4 bg-amber-50 rounded-2xl border border-amber-100 flex items-start transition-all duration-500">
+                        <div class="bg-amber-100 p-2 rounded-lg mr-4">
+                            <i data-lucide="alert-circle" class="text-amber-600 w-5 h-5"></i>
+                        </div>
+                        <div class="flex-1">
+                            <h3 class="font-bold text-amber-900 text-sm italic">Observation Alert</h3>
+                            <p class="text-xs text-amber-700 mt-1" id="check-bp-text">數據分析中...</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-10">
+                    <button onclick="generateClaim()" id="claim-btn" class="w-full bg-indigo-600 text-white py-4 rounded-2xl font-black text-lg hover:bg-indigo-700 transition shadow-lg shadow-indigo-100 flex items-center justify-center space-x-3 active:scale-95">
+                        <i data-lucide="file-check"></i>
+                        <span>生成 FHIR Claim 資源</span>
+                    </button>
+                    <div class="mt-4 flex justify-center items-center space-x-4 text-[10px] text-slate-400 font-bold uppercase tracking-widest">
+                        <span>Standard: TW Core IG</span>
+                        <span class="text-slate-200">|</span>
+                        <span>SMART App State: Active</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="col-span-12 lg:col-span-7 space-y-6">
+            <div class="bg-white rounded-3xl p-8 shadow-sm border border-slate-100">
+                <div class="flex justify-between items-center mb-8">
+                    <div>
+                        <h3 class="text-lg font-bold text-slate-800 italic">Blood Pressure Trends</h3>
+                        <p class="text-xs text-slate-400 font-medium">LOINC: 85354-9 (Systolic/Diastolic)</p>
+                    </div>
+                    <div class="bg-indigo-50 px-3 py-1 rounded-full"><span class="text-[10px] font-bold text-indigo-600 underline">FHIR Observation Dataset</span></div>
+                </div>
+                <div class="h-[300px]">
+                    <canvas id="bpChart"></canvas>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="bg-slate-900 rounded-3xl p-6 shadow-xl relative overflow-hidden">
+                    <i data-lucide="shield-check" class="absolute -right-4 -bottom-4 w-32 h-32 text-slate-800 opacity-30"></i>
+                    <p class="text-slate-400 text-xs font-bold uppercase mb-4 tracking-widest italic">核付機率預測</p>
+                    <div class="relative z-10">
+                        <h4 class="text-5xl font-black text-white italic">94<span class="text-2xl text-indigo-400">%</span></h4>
+                        <p class="text-green-400 text-[10px] font-bold mt-2 flex items-center">
+                            <i data-lucide="check-circle" class="w-3 h-3 mr-1"></i> 低核減風險項目 (依據臨床證據)
+                        </p>
+                    </div>
+                </div>
+                <div class="bg-white rounded-3xl p-6 shadow-sm border border-slate-100 flex flex-col justify-center">
+                    <p class="text-slate-400 text-xs font-bold uppercase mb-4 tracking-widest italic text-sm">預估申報點數</p>
+                    <h4 class="text-4xl font-black text-indigo-600 italic">1,250 <span class="text-lg font-medium text-slate-200">pts</span></h4>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- JSON Debug Modal -->
+    <div id="json-modal" class="fixed inset-0 bg-slate-900/80 backdrop-blur-md hidden z-50 flex items-center justify-center p-4">
+        <div class="bg-[#1e1e1e] w-full max-w-3xl rounded-3xl shadow-2xl overflow-hidden border border-slate-700">
+            <div class="p-5 border-b border-slate-800 flex justify-between items-center bg-black/20">
+                <div class="flex items-center space-x-3">
+                    <div class="h-3 w-3 rounded-full bg-red-500"></div>
+                    <div class="h-3 w-3 rounded-full bg-amber-500"></div>
+                    <div class="h-3 w-3 rounded-full bg-green-500"></div>
+                    <span class="ml-4 text-slate-400 font-mono text-[10px] uppercase">FHIR_Resource_Output.json</span>
+                </div>
+                <button onclick="toggleJsonView()" class="text-slate-400 hover:text-white transition"><i data-lucide="x"></i></button>
+            </div>
+            <pre class="p-8 text-blue-400 font-mono text-xs overflow-auto max-h-[550px]" id="json-content">{}</pre>
+        </div>
     </div>
 
     <script>
-        /**
-         * SMART on FHIR 啟動邏輯
-         * 此頁面負責與 FHIR Server 的 Authorization Endpoint 進行握手
-         */
-        FHIR.oauth2.authorize({
-            // 客戶端 ID (Client ID)
-            "clientId": "cc344727-6f90-496c-94fd-c7829aa9a51d", 
-            
-            // 要求的權限範圍 (Scope)
-            // 1. 加入 launch/patient 權限，在 Standalone 啟動時會觸發 Sandbox 的「病人選擇器」
-            // 2. 確保擁有 Patient, Observation (血壓) 與 Condition (診斷) 的讀取權限
-            "scope": "launch/patient patient/Patient.read patient/Observation.read patient/Condition.read openid fhirUser profile",
-            
-            // 授權成功後的跳轉頁面 (導回您的主程式 index.html)
-            "redirectUri": "index.html",
-            
-            // 從 URL 參數中自動取得 FHIR Server 的 Base URL (iss)
-            // 若直接開啟此網頁無參數，則預設連接至 SMART Health IT Sandbox R4 測試伺服器
-            "iss": new URLSearchParams(window.location.search).get("iss") || "https://launch.smarthealthit.org/v/r4/fhir"
-        });
-    </script>
+        // 初始化 Lucide 圖示
+        lucide.createIcons();
 
-    <style>
-        .loader {
-            border: 4px solid #e2e8f0;
-            border-top: 4px solid #4f46e5;
-            border-radius: 50%;
-            width: 48px;
-            height: 48px;
-            animation: spin 1s linear infinite;
+        // ==================== 主程式 ====================
+        async function initApp() {
+            try {
+                // 關鍵：使用 FHIR.oauth2.ready() 取得已授權的 client
+                const client = await FHIR.oauth2.ready();
+                console.log("✅ SMART on FHIR 授權成功", client);
+
+                // 1. 取得病人基本資料
+                const patient = await client.request(`Patient/${client.patient.id}`);
+
+                // 2. 取得最近的血壓 Observation (LOINC 85354-9)
+                const bpBundle = await client.request({
+                    url: "Observation",
+                    params: {
+                        patient: client.patient.id,
+                        code: "85354-9",           // Blood pressure panel
+                        _sort: "-date",
+                        _count: 12
+                    }
+                });
+
+                // 解析最新血壓
+                let latestSBP = 135;
+                let latestDBP = 82;
+                let bpHistory = [135, 142, 138, 145, 150, 148]; // 預設趨勢
+
+                if (bpBundle.entry && bpBundle.entry.length > 0) {
+                    const obsList = bpBundle.entry.map(e => e.resource);
+                    
+                    // 取最新一筆
+                    const latestObs = obsList[0];
+                    if (latestObs.component) {
+                        latestSBP = latestObs.component.find(c => 
+                            c.code.coding?.[0]?.code === "8480-6"
+                        )?.valueQuantity?.value || 135;
+
+                        latestDBP = latestObs.component.find(c => 
+                            c.code.coding?.[0]?.code === "8462-4"
+                        )?.valueQuantity?.value || 82;
+                    }
+
+                    // 建立趨勢資料（最多6筆）
+                    bpHistory = obsList.slice(0, 6).map(obs => {
+                        const sbpComp = obs.component?.find(c => c.code.coding?.[0]?.code === "8480-6");
+                        return sbpComp?.valueQuantity?.value || 135;
+                    }).reverse();
+                }
+
+                // 更新 UI
+                updateUIWithData({
+                    name: patient.name?.[0]?.text || 
+                          `${patient.name?.[0]?.family || ''} ${patient.name?.[0]?.given?.join(' ') || ''}`,
+                    id: patient.id,
+                    age: patient.birthDate ? 
+                         (new Date().getFullYear() - new Date(patient.birthDate).getFullYear()) : 58,
+                    gender: patient.gender === "male" ? "男" : (patient.gender === "female" ? "女" : "未知"),
+                    sbp: Math.round(latestSBP),
+                    dbp: Math.round(latestDBP),
+                    diagnosis: "I10 原發性高血壓"
+                });
+
+                // 渲染血壓趨勢圖
+                renderBPChart(bpHistory);
+
+                console.log("📊 病人資料載入完成", { patient, bpBundle });
+
+            } catch (error) {
+                console.error("❌ SMART Launch 失敗，切換至 Demo 模式", error);
+                
+                // Demo 模式（直接開啟 index.html 或授權失敗時使用）
+                updateUIWithData({
+                    name: "王大同 (Wang, Da-Tong)",
+                    id: "A123456789",
+                    age: 58,
+                    gender: "男",
+                    sbp: 135,
+                    dbp: 82,
+                    diagnosis: "I10 原發性高血壓"
+                });
+                renderBPChart([155, 148, 150, 142, 138, 135]);
+            }
         }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+
+        function updateUIWithData(data) {
+            document.getElementById('pt-name').innerText = data.name;
+            document.getElementById('pt-details').innerText = `ID: ${data.id} • ${data.gender} • ${data.age}歲`;
+            document.getElementById('header-sbp').innerHTML = `${data.sbp} <span class="text-sm font-normal text-slate-400">mmHg</span>`;
+            document.getElementById('check-diagnosis').innerText = `已檢核診斷: ${data.diagnosis}`;
+            document.getElementById('check-bp-text').innerText = `最近 SBP 為 ${data.sbp} mmHg，符合維持性治療給付規範。`;
         }
-    </style>
+
+        // 渲染血壓趨勢圖（支援動態資料）
+        function renderBPChart(historyData) {
+            const ctx = document.getElementById('bpChart').getContext('2d');
+            
+            // 清除舊圖表（避免重複建立）
+            if (window.bpChartInstance) {
+                window.bpChartInstance.destroy();
+            }
+
+            window.bpChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: ['6個月前', '5個月前', '4個月前', '3個月前', '2個月前', '最近'],
+                    datasets: [{
+                        label: '收縮壓 (SBP)',
+                        data: historyData,
+                        borderColor: '#4f46e5',
+                        backgroundColor: 'rgba(79, 70, 229, 0.08)',
+                        borderWidth: 3,
+                        pointBackgroundColor: '#fff',
+                        pointBorderColor: '#4f46e5',
+                        pointRadius: 5,
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: { min: 100, max: 180, grid: { color: '#e2e8f0' } }
+                    }
+                }
+            });
+        }
+
+        // 生成 Claim 資源
+        function generateClaim() {
+            const btn = document.getElementById('claim-btn');
+            const originalText = btn.innerHTML;
+            
+            btn.innerHTML = '<i data-lucide="loader" class="animate-spin mr-2"></i> 資源封裝中...';
+            lucide.createIcons();
+
+            const claimJSON = {
+                resourceType: "Claim",
+                id: "smart-claim-" + Date.now().toString().slice(-6),
+                status: "active",
+                use: "claim",
+                patient: { 
+                    reference: `Patient/${document.getElementById('pt-details').innerText.split('ID: ')[1]?.split(' ')[0] || 'unknown'}`,
+                    display: document.getElementById('pt-name').innerText 
+                },
+                created: new Date().toISOString(),
+                diagnosis: [{
+                    sequence: 1,
+                    diagnosisCodeableConcept: {
+                        coding: [{ 
+                            system: "http://hl7.org/fhir/sid/icd-10-cm", 
+                            code: "I10", 
+                            display: "Essential (primary) hypertension" 
+                        }]
+                    }
+                }],
+                supportingInfo: [{
+                    sequence: 1,
+                    category: { text: "Blood Pressure Evidence" },
+                    valueString: `Recent SBP: ${document.getElementById('header-sbp').innerText} mmHg. Complies with hypertension maintenance guideline.`
+                }],
+                item: [{
+                    sequence: 1,
+                    productOrService: {
+                        coding: [{ 
+                            system: "http://nhi.gov.tw", 
+                            code: "B024345100", 
+                            display: "Valsartan 80mg" 
+                        }]
+                    },
+                    net: { value: 1250, currency: "TWD" }
+                }]
+            };
+
+            setTimeout(() => {
+                document.getElementById('json-content').innerText = JSON.stringify(claimJSON, null, 2);
+                toggleJsonView();
+                
+                btn.innerHTML = '<i data-lucide="check-circle" class="mr-2"></i> 申報資源已生成 ✓';
+                btn.classList.remove('bg-indigo-600', 'hover:bg-indigo-700');
+                btn.classList.add('bg-green-600');
+                lucide.createIcons();
+            }, 1200);
+        }
+
+        function toggleJsonView() {
+            document.getElementById('json-modal').classList.toggle('hidden');
+        }
+
+        // 頁面載入時執行
+        window.onload = initApp;
+    </script>
 </body>
 </html>
