@@ -4,117 +4,68 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SMART on FHIR Launching...</title>
-    <script src="https://cdn.jsdelivr.net/npm/fhirclient/build/fhir-client.js"></script>
-    <style>
-        body {
-            font-family: 'Inter', system-ui, sans-serif;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            height: 100vh;
-            background: linear-gradient(135deg, #f8fafc 0%, #e0f2fe 100%);
-            margin: 0;
+    <script src="https://cdn.jsdelivr.net/npm/fhirclient@2/build/fhir-client.min.js"></script>
+</head>
+<body>
+    <div style="font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background-color: #f8fafc;">
+        <div class="loader"></div>
+        <p style="margin-top: 24px; color: #475569; font-size: 16px; font-weight: 500;">正在連接 FHIR 醫療資料庫並進行安全性驗證...</p>
+        <p style="margin-top: 8px; color: #94a3b8; font-size: 14px;">Client ID: cc344727-6f90-496c-94fd-c7829aa9a51d</p>
+        <p id="status" style="margin-top: 12px; color: #64748b; font-size: 13px;"></p>
+    </div>
+
+    <script>
+        const statusEl = document.getElementById('status');
+
+        function updateStatus(message, color = '#64748b') {
+            statusEl.textContent = message;
+            statusEl.style.color = color;
         }
+
+        async function launchSMART() {
+            try {
+                updateStatus("正在取得 FHIR Server 資訊...");
+
+                const iss = new URLSearchParams(window.location.search).get("iss");
+                
+                if (!iss) {
+                    throw new Error("缺少 iss 參數！請確認 launch URL 是否包含 ?iss=... ");
+                }
+
+                updateStatus(`FHIR Server: ${iss}`, "#3b82f6");
+
+                await FHIR.oauth2.authorize({
+                    clientId: "cc344727-6f90-496c-94fd-c7829aa9a51d",
+                    scope: "patient/*.read user/Patient.read openid fhirUser profile launch",
+                    redirectUri: "index.html",
+                    iss: iss,
+                    // 可選：增加完整性檢查
+                    redirectOnSuccess: true
+                });
+
+            } catch (error) {
+                console.error("SMART Launch 失敗:", error);
+                updateStatus("啟動失敗: " + error.message, "#ef4444");
+            }
+        }
+
+        // 頁面載入後自動執行
+        window.onload = launchSMART;
+    </script>
+
+    <style>
         .loader {
-            border: 5px solid #e2e8f0;
-            border-top: 5px solid #4f46e5;
+            border: 4px solid #e2e8f0;
+            border-top: 4px solid #4f46e5;
             border-radius: 50%;
-            width: 56px;
-            height: 56px;
+            width: 48px;
+            height: 48px;
             animation: spin 1s linear infinite;
         }
         @keyframes spin {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
-        .container {
-            text-align: center;
-        }
-        .title {
-            margin-top: 28px;
-            color: #1e2937;
-            font-size: 20px;
-            font-weight: 600;
-        }
-        .subtitle {
-            margin-top: 8px;
-            color: #64748b;
-            font-size: 14px;
-        }
-        .client-info {
-            margin-top: 16px;
-            padding: 8px 16px;
-            background-color: rgba(255,255,255,0.7);
-            border-radius: 9999px;
-            font-size: 13px;
-            color: #475569;
-            border: 1px solid #e2e8f0;
-        }
     </style>
-</head>
-<body>
-    <div class="container">
-        <div class="loader"></div>
-        <div class="title">FHIR SMART on FHIR 啟動中...</div>
-        <div class="subtitle">正在連接測試伺服器並進行安全性驗證</div>
-        <div class="client-info">
-            Client ID: cc344727-6f90-496c-94fd-c7829aa9a51d
-        </div>
-    </div>
-
-    <script>
-        /**
-         * SMART on FHIR Launch 完整版
-         * 專為 https://launch.smarthealthit.org/ 測試伺服器設計
-         */
-
-        async function startLaunch() {
-            try {
-                const params = new URLSearchParams(window.location.search);
-                const iss = params.get("iss");
-
-                if (!iss) {
-                    throw new Error("缺少 iss 參數，請從 https://launch.smarthealthit.org/ 啟動應用程式");
-                }
-
-                console.log("準備授權 - ISS:", iss);
-
-                await FHIR.oauth2.authorize({
-                    clientId: "cc344727-6f90-496c-94fd-c7829aa9a51d",
-                    
-                    // 推薦使用的 scope（適合測試環境）
-                    scope: "launch/patient patient/*.read user/*.read openid fhirUser profile",
-
-                    // 授權成功後跳轉回主頁面
-                    redirectUri: window.location.origin + window.location.pathname.replace("launch.html", "index.html"),
-                    
-                    // 由 fhirclient 自動處理 iss
-                    iss: iss
-                });
-
-            } catch (error) {
-                console.error("Launch 失敗:", error);
-                
-                // 顯示錯誤訊息給使用者
-                document.body.innerHTML = `
-                    <div style="text-align:center; padding:40px; font-family:sans-serif;">
-                        <h2 style="color:#ef4444;">啟動失敗</h2>
-                        <p style="color:#64748b; margin:20px 0;">${error.message}</p>
-                        <button onclick="window.location.reload()" 
-                                style="padding:10px 20px; background:#4f46e5; color:white; border:none; border-radius:8px; cursor:pointer;">
-                            重試
-                        </button>
-                        <p style="margin-top:30px; font-size:13px; color:#94a3b8;">
-                            請確認您是從 <strong>https://launch.smarthealthit.org/</strong> 啟動此應用程式
-                        </p>
-                    </div>
-                `;
-            }
-        }
-
-        // 頁面載入後立即執行
-        window.onload = startLaunch;
-    </script>
 </body>
 </html>
